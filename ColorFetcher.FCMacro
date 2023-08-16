@@ -1,0 +1,111 @@
+from PySide2.QtXml import QDomDocument, QDomNode
+__Name__            = 'Color Fetcher'
+__Comment__         = 'Parses the user config for colors and presents them in a grid'
+__Author__          = 'Axeia'
+__Version__         = '1' 
+__Date__            = '2023-08-15'
+__License__         = 'CC0-1.0'
+__Web__             = ''
+__Wiki__            = ''
+__Icon__            = 'https://svgshare.com/i/wZ8.svg'
+__Help__            = ''
+__Status__          = ''
+__Requires__        = 'FreeCAD >= v0.20'
+__Communication__   = 'https://forum.freecad.org/memberlist.php?mode=viewprofile&u=54199'
+__Files__           = ''
+
+import os
+from PySide2 import QtWidgets
+from PySide2 import QtGui
+from PySide2 import QtCore
+from FreeCAD import Console
+from PySide2.QtXml import QDomDocument, QDomNodeList
+from typing import Dict
+
+
+class ColorFetcherDialog(QtWidgets.QDialog):
+    def __init__(self):
+        super().__init__()
+
+        self.setWindowFlags(QtCore.Qt.WindowCloseButtonHint)
+        self.setWindowTitle(__Name__)
+        self.resize(1280, 800)
+        self.setUpUi()
+
+
+    def setUpUi(self):
+        gridLayoutMain = QtWidgets.QGridLayout(self)
+
+        folder = QtCore.QDir(os.path.dirname(__file__))
+        folder.cdUp()
+        userCfgPath = folder.filePath('user.cfg')
+        domDoc = QDomDocument('user-config')
+
+        userConfigFile = QtCore.QFile(userCfgPath)
+        if userConfigFile.open(QtCore.QIODevice.ReadOnly | QtCore.QIODevice.Text):
+            content = userConfigFile.readAll().data().decode()
+            if domDoc.setContent(content):
+                Console.PrintMessage(
+                    f"Loaded QDomDocument with content from: {userCfgPath}")
+            else:
+                Console.PrintMessage("Failed to set QDomDocument content")
+        else:
+            Console.PrintMessage("Failed to open user config file for reading")
+
+        tree = QtWidgets.QTreeWidget()
+        # Set column labels
+        tree.setHeaderLabels(["Path", "Value", "Color", "Hex Color"])
+        gridLayoutMain.addWidget(tree)
+
+        root = domDoc.documentElement()
+        mapped = self.findValuesWith10Digits(root, '')
+        for path, varNameAndColor in mapped.items():
+            topItem = QtWidgets.QTreeWidgetItem(tree, [path, "", "", ""])
+            for varName, color in varNameAndColor.items():
+                qColor = self.ConfigColorToQColor(color)
+                hexColor = qColor.name()
+                childItem = QtWidgets.QTreeWidgetItem(topItem, [varName, color, "", hexColor])
+                childItem.setBackground(2, QtGui.QBrush(qColor))
+                childItem.setSizeHint(2, QtCore.QSize(20, 50))
+
+                monospaceFont = QtGui.QFont("Courier New")
+                childItem.setFont(3, monospaceFont)
+                # Set the Qt.ItemIsEditable flag for the desired column (index 1 in this case)
+                childItem.setFlags(childItem.flags() | QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEditable)
+
+        tree.header().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        tree.header().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+        tree.resizeColumnToContents(0)
+        tree.resizeColumnToContents(1)
+        tree.setColumnWidth(2, 50)
+        tree.setColumnWidth(3, 100)  # Set fourth column width
+        tree.expandAll()  # Expand all tree items
+
+    def ConfigColorToQColor(self, argb: str) -> QtGui.QColor:
+        rgbaHex = format(int(argb), '08x')
+        r, g, b = rgbaHex[:2], rgbaHex[2:4], rgbaHex[4:6]
+        return QtGui.QColor(int(r, 16), int(g, 16), int(b, 16))
+
+    def findValuesWith10Digits(self, node: QDomNode, currentPath: str, mapping=None) -> Dict[str, Dict[str, str]]:
+        if mapping is None:
+            mapping = {}
+
+        if node.isElement():
+            element = node.toElement()
+            if element.hasAttribute("Value") and element.attribute("Value").isnumeric() and len(element.attribute("Value")) == 10:
+                if currentPath not in mapping:
+                    mapping[currentPath] = {}
+                
+                mapping[currentPath][element.attribute('Name')] = element.attribute('Value')
+
+            currentPath += "/" + element.attribute("Name")
+
+        childNodes: QDomNodeList = node.childNodes()
+        for i in range(childNodes.size()):
+            child_node: QDomNode = childNodes.at(i)
+            self.findValuesWith10Digits(child_node, currentPath, mapping)
+
+        return mapping
+
+dialog = ColorFetcherDialog()
+dialog.show()
