@@ -21,7 +21,8 @@ from PySide2 import QtCore
 from FreeCAD import Console
 from PySide2.QtXml import QDomDocument, QDomNodeList
 from typing import Dict
-
+from PySide2.QtGui import QTextCharFormat, QColor, QTextCursor
+from PySide2.QtCore import QRegularExpression
 
 class ColorFetcherDialog(QtWidgets.QDialog):
     def __init__(self):
@@ -29,12 +30,12 @@ class ColorFetcherDialog(QtWidgets.QDialog):
 
         self.setWindowFlags(QtCore.Qt.WindowCloseButtonHint)
         self.setWindowTitle(__Name__)
-        self.resize(1280, 800)
+        self.resize(1600, 800)
         self.setUpUi()
 
 
     def setUpUi(self):
-        gridLayoutMain = QtWidgets.QGridLayout(self)
+        self.gridLayoutMain = QtWidgets.QGridLayout(self)
 
         folder = QtCore.QDir(os.path.dirname(__file__))
         folder.cdUp()
@@ -52,60 +53,132 @@ class ColorFetcherDialog(QtWidgets.QDialog):
         else:
             Console.PrintMessage("Failed to open user config file for reading")
 
+        tree = self.createTree(domDoc)
+
+
+        textEdit = QtWidgets.QTextEdit()
+        textEdit.setText(self.convertColorValuesToHex(domDoc).toString())
+        self.highlightValueHexColor(textEdit)
+        self.gridLayoutMain.addWidget(textEdit, 0, 1)
+
+    def highlightValueHexColor(self, textEdit):
+        colorFormat = QtGui.QTextCharFormat()
+        colorFormat.setBackground(QtGui.QColor(QtCore.Qt.darkGreen))  # Set the highlight color
+        colorFormat.setForeground(QtGui.QColor(QtCore.Qt.white))
+
+        cursor = textEdit.textCursor()
+        document = textEdit.document()
+
+        cursor.beginEditBlock()  # Begin batch edit for better performance
+        block = document.begin()
+        while block.isValid():
+            blockText = block.text()
+            startPos = blockText.find('Value="#')
+            while startPos != -1:
+                endPos = blockText.find('"', startPos + 8)  # Find the closing double-quote
+                if endPos != -1:
+                    start = block.position() + startPos
+                    end = block.position() + endPos + 1
+                    cursor.setPosition(start)
+                    cursor.movePosition(QtGui.QTextCursor.Right, QtGui.QTextCursor.KeepAnchor, end - start)
+                    cursor.setCharFormat(colorFormat)
+                startPos = blockText.find('Value="#', endPos + 1)  # Search for the next occurrence
+            block = block.next()
+        cursor.endEditBlock()  # End batch edit
+
+
+    def createTree(self, domDoc: QDomDocument) -> QtWidgets.QTreeWidget:
         tree = QtWidgets.QTreeWidget()
         # Set column labels
         tree.setHeaderLabels(["Path", "Value", "Color", "Hex Color"])
-        gridLayoutMain.addWidget(tree)
+        self.gridLayoutMain.addWidget(tree)
 
         root = domDoc.documentElement()
-        mapped = self.findValuesWith10Digits(root, '')
+        mapped = self.findValuesWithColors(root, '')
         for path, varNameAndColor in mapped.items():
             topItem = QtWidgets.QTreeWidgetItem(tree, [path, "", "", ""])
             for varName, color in varNameAndColor.items():
                 qColor = self.ConfigColorToQColor(color)
                 hexColor = qColor.name()
-                childItem = QtWidgets.QTreeWidgetItem(topItem, [varName, color, "", hexColor])
+                childItem = QtWidgets.QTreeWidgetItem(
+                    topItem, [varName, color, "", hexColor])
                 childItem.setBackground(2, QtGui.QBrush(qColor))
                 childItem.setSizeHint(2, QtCore.QSize(20, 50))
 
                 monospaceFont = QtGui.QFont("Courier New")
                 childItem.setFont(3, monospaceFont)
                 # Set the Qt.ItemIsEditable flag for the desired column (index 1 in this case)
-                childItem.setFlags(childItem.flags() | QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEditable)
+                childItem.setFlags(
+                    childItem.flags() | QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEditable)
 
         tree.header().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
-        tree.header().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+        tree.header().setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
+        tree.header().setSectionResizeMode(2, QtWidgets.QHeaderView.Fixed)
+        tree.header().setSectionResizeMode(3, QtWidgets.QHeaderView.Fixed)
+        tree.header().setStretchLastSection(False)
         tree.resizeColumnToContents(0)
         tree.resizeColumnToContents(1)
+        tree.setColumnWidth(1, 100)
         tree.setColumnWidth(2, 50)
-        tree.setColumnWidth(3, 100)  # Set fourth column width
+        tree.setColumnWidth(3, 80)  # Set fourth column width
         tree.expandAll()  # Expand all tree items
+
+        return tree
 
     def ConfigColorToQColor(self, argb: str) -> QtGui.QColor:
         rgbaHex = format(int(argb), '08x')
         r, g, b = rgbaHex[:2], rgbaHex[2:4], rgbaHex[4:6]
         return QtGui.QColor(int(r, 16), int(g, 16), int(b, 16))
-
-    def findValuesWith10Digits(self, node: QDomNode, currentPath: str, mapping=None) -> Dict[str, Dict[str, str]]:
+    
+    def findValuesWithColors(self, node: QDomNode, currentPath: str, mapping=None) -> Dict[str, Dict[str, str]]:
         if mapping is None:
             mapping = {}
 
         if node.isElement():
             element = node.toElement()
-            if element.hasAttribute("Value") and element.attribute("Value").isnumeric() and len(element.attribute("Value")) == 10:
-                if currentPath not in mapping:
-                    mapping[currentPath] = {}
-                
-                mapping[currentPath][element.attribute('Name')] = element.attribute('Value')
+            if element.tagName() == "FCUInt"\
+            and element.hasAttribute("Value")\
+            and element.attribute("Value").isnumeric()\
+            and "Color" in element.attribute("Name"):
+                color_value = element.attribute("Value")
+                if len(color_value) == 10:
+                    if currentPath not in mapping:
+                        mapping[currentPath] = {}
+
+                    mapping[currentPath][element.attribute('Name')] = color_value
+                elif len(color_value) > 0 and color_value.isdigit():
+                    if currentPath not in mapping:
+                        mapping[currentPath] = {}
+
+                    mapping[currentPath][element.attribute('Name')] = color_value
 
             currentPath += "/" + element.attribute("Name")
 
         childNodes: QDomNodeList = node.childNodes()
         for i in range(childNodes.size()):
-            child_node: QDomNode = childNodes.at(i)
-            self.findValuesWith10Digits(child_node, currentPath, mapping)
+            childNode: QDomNode = childNodes.at(i)
+            self.findValuesWithColors(childNode, currentPath, mapping)
 
         return mapping
+    
+    def convertColorValuesToHex(self, node: QDomNode) -> QDomNode:
+        if node.isElement():
+            element = node.toElement()
+            element = node.toElement()
+            if element.tagName() == "FCUInt"\
+            and element.hasAttribute("Value")\
+            and element.attribute("Value").isnumeric()\
+            and "Color" in element.attribute("Name"):
+                element.setTagName('FCText')
+                element.setAttribute('Value', self.ConfigColorToQColor(element.attribute('Value')).name())
+
+        childNodes: QDomNodeList = node.childNodes()
+        for i in range(childNodes.size()):
+            childNode: QDomNode = childNodes.at(i)
+            self.convertColorValuesToHex(childNode)
+
+        return node
+
 
 dialog = ColorFetcherDialog()
 dialog.show()
