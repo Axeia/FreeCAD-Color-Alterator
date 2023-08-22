@@ -65,7 +65,6 @@ class ColorConfigTree(QtWidgets.QTreeWidget):
 
     def mouseMoveEvent(self, event):
         index = self.indexAt(event.pos())
-        Console.PrintMessage(index.parent().isValid())
 
         if index.column() == self.COLORCOLINDEX:
             QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.PointingHandCursor)
