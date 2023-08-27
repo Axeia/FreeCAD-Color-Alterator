@@ -10,6 +10,12 @@ It should work with any FreeCAD installation of v0.19 or higher, please report a
 Please see the FreeCAD wiki on how to install a macro
 https://wiki.freecad.org/How_to_install_macros
 
+## Version notes
+**v2:**
+Added support for Alpha transparency if it's initially present (fixing [issue #2](https://github.com/Axeia/FreeCAD-Color-Alterator/issues/2)) or when ctrl+shift are held when clicking the color column.
+
+*Note: It's strongly discouraged to use alpha transparency as FreeCADs own UI (at least at present) does not allow editting the Alpha channel so if it works and if it works consistently is unknown. I added the feature for those who like to experiment and know that they're playing with fire.*
+
 ## License
 FreeCAD wants the license for a macro in a specific format so I've put it as 
 * CC0-1.0 (Basically public domain, see https://creativecommons.org/publicdomain/zero/1.0/)
