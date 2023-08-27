@@ -1,8 +1,8 @@
 __Name__            = 'Color Alterator'
 __Comment__         = 'Parses the user config for colors and presents them in a grid'
 __Author__          = 'Axeia'
-__Version__         = '1' 
-__Date__            = '2023-08-22'
+__Version__         = '2' 
+__Date__            = '2023-08-27'
 __License__         = 'CC0-1.0'
 __Web__             = ''
 __Wiki__            = ''
@@ -14,30 +14,29 @@ __Communication__   = 'https://forum.freecad.org/memberlist.php?mode=viewprofile
 __Files__           = ''
 
 import os
-from PySide2 import QtWidgets
-from PySide2 import QtGui
-from PySide2 import QtCore
+from PySide2.QtWidgets import QColorDialog, QTreeWidget, QTreeWidgetItem, QDialog, QHeaderView, QStyledItemDelegate, QApplication, QGridLayout
+from PySide2.QtGui import QCursor, QCloseEvent, QFont, QBrush, QColor
+from PySide2.QtCore import QDir, QFile, QTimer, QIODevice, QSize
+from PySide2.QtCore import Qt
 from FreeCAD import Console, ParamGet
 from PySide2.QtXml import QDomDocument, QDomNodeList, QDomElement
 from PySide2.QtXml import QDomDocument, QDomNode
 from typing import Dict
-from PySide2.QtGui import QColor
 import FreeCADGui
 import FreeCAD
-from PySide2.QtTest import QTest
-import time
 
-class TreeItemWithColorDomElement(QtWidgets.QTreeWidgetItem):
-    def __init__(self, parent: QtWidgets.QTreeWidget, sequence: [], domElement: QDomElement):
+
+class TreeItemWithColorDomElement(QTreeWidgetItem):
+    def __init__(self, parent: QTreeWidget, sequence: [], domElement: QDomElement):
         super().__init__(parent, sequence)
         self.domElement = domElement
 
-        monospaceFont = QtGui.QFont("Courier New")
+        monospaceFont = QFont("Courier New")
 
         self.setFont(1, monospaceFont)
         self.setFont(3, monospaceFont)
 
-class ColorConfigTree(QtWidgets.QTreeWidget):
+class ColorConfigTree(QTreeWidget):
     COLORCOLINDEX = 2
 
     def __init__(self) -> None:
@@ -47,10 +46,10 @@ class ColorConfigTree(QtWidgets.QTreeWidget):
         self.setHeaderLabels(["Path", "Value", "Color", "Hex Color"])
 
         self.hideColumn(4)
-        self.header().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
-        self.header().setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
-        self.header().setSectionResizeMode(2, QtWidgets.QHeaderView.Fixed)
-        self.header().setSectionResizeMode(3, QtWidgets.QHeaderView.Fixed)
+        self.header().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.header().setSectionResizeMode(1, QHeaderView.Fixed)
+        self.header().setSectionResizeMode(2, QHeaderView.Fixed)
+        self.header().setSectionResizeMode(3, QHeaderView.Fixed)
         self.header().setStretchLastSection(False)
         self.resizeColumnToContents(0)
         self.resizeColumnToContents(1)
@@ -60,14 +59,14 @@ class ColorConfigTree(QtWidgets.QTreeWidget):
         self.setMouseTracking(True)
 
     def actuallyRestoreCursor(self):
-        while QtWidgets.QApplication.overrideCursor() is not None:
-            QtWidgets.QApplication.restoreOverrideCursor()
+        while QApplication.overrideCursor() is not None:
+            QApplication.restoreOverrideCursor()
 
     def mouseMoveEvent(self, event):
         index = self.indexAt(event.pos())
 
         if index.column() == self.COLORCOLINDEX:
-            QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.PointingHandCursor)
+            QApplication.setOverrideCursor(Qt.PointingHandCursor)
         elif event.pos().y() < self.header().height() \
                 or event.pos().y() > self.visualItemRect(self.topLevelItem(self.topLevelItemCount() - 1)).bottom():
             self.actuallyRestoreCursor()
@@ -80,7 +79,7 @@ class ColorConfigTree(QtWidgets.QTreeWidget):
         self.actuallyRestoreCursor()
         super().leaveEvent(event)
 
-class CustomDelegate(QtWidgets.QStyledItemDelegate):
+class CustomDelegate(QStyledItemDelegate):
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -88,7 +87,7 @@ class CustomDelegate(QtWidgets.QStyledItemDelegate):
         # Check if the current column is column 2
         if index.column() == 2:
             # Get the background color for column 2
-            background_brush = index.data(QtCore.Qt.BackgroundRole)
+            background_brush = index.data(Qt.BackgroundRole)
 
             if background_brush is not None:
                 # Use the background color for column 2
@@ -107,7 +106,7 @@ class CustomDelegate(QtWidgets.QStyledItemDelegate):
         # Check if the current column is column 2
         if index.column() == 2:
             # Set the cursor shape to the pointing hand
-            option.cursor = QtGui.QCursor(QtCore.Qt.PointingHandCursor)
+            option.cursor = QCursor(Qt.PointingHandCursor)
 
 
 # opens the preferences dialog and then closes it by accepting it.
@@ -117,12 +116,12 @@ def openAndAcceptPreferencesDialog():
     if not openAndAcceptPreferencesDialog.triggered:
         openAndAcceptPreferencesDialog.triggered = True
         def acceptPreferences():
-            for widget in QtWidgets.QApplication.allWidgets():
-                if isinstance(widget, QtWidgets.QDialog):
-                    dialog: QtWidgets.QDialog = widget
+            for widget in QApplication.allWidgets():
+                if isinstance(widget, QDialog):
+                    dialog: QDialog = widget
                     dialog.accept()
 
-        timer = QtCore.QTimer(singleShot=True)
+        timer = QTimer(singleShot=True)
         timer.timeout.connect(acceptPreferences)
         timer.setInterval(200)
         timer.start()
@@ -131,33 +130,33 @@ def openAndAcceptPreferencesDialog():
 
 openAndAcceptPreferencesDialog.triggered = False
 
-class ColorFetcherDialog(QtWidgets.QDialog):
+class ColorFetcherDialog(QDialog):
     def __init__(self):
         super().__init__()
 
-        self.setWindowFlags(QtCore.Qt.WindowCloseButtonHint)
+        self.setWindowFlags(Qt.WindowCloseButtonHint)
         self.setWindowTitle(__Name__)
         self.resize(800, 800)
         self.setUpUi()
         self.aColorHasChanged = False
 
-    def closeEvent(self, event: QtGui.QCloseEvent):
+    def closeEvent(self, event: QCloseEvent):
         if self.aColorHasChanged:
             openAndAcceptPreferencesDialog()
 
     def setUpUi(self):
-        self.gridLayoutMain = QtWidgets.QGridLayout(self)
+        self.gridLayoutMain = QGridLayout(self)
 
         strFolder = FreeCAD.getUserAppDataDir()
         if hasattr(FreeCAD, 'getUserConfigDir'):            
             strFolder = FreeCAD.getUserConfigDir()
 
-        folder = QtCore.QDir(strFolder)
+        folder = QDir(strFolder)
         userCfgPath = folder.filePath('user.cfg')
         domDoc = QDomDocument('user-config')
-        self.userConfigFile = QtCore.QFile(userCfgPath)
+        self.userConfigFile = QFile(userCfgPath)
 
-        if self.userConfigFile.open(QtCore.QIODevice.ReadOnly | QtCore.QIODevice.Text):
+        if self.userConfigFile.open(QIODevice.ReadOnly | QIODevice.Text):
             content = self.userConfigFile.readAll().data().decode()
             if domDoc.setContent(content):
                 Console.PrintMessage(
@@ -169,31 +168,36 @@ class ColorFetcherDialog(QtWidgets.QDialog):
 
         tree = self.createTree(domDoc)
 
-    def createTree(self, domDoc: QDomDocument) -> QtWidgets.QTreeWidget:
+
+    def ColorIsTranslucent(self, color: QColor):
+        return color.alpha() < 255
+
+    def createTree(self, domDoc: QDomDocument) -> QTreeWidget:
         tree = ColorConfigTree()
         self.gridLayoutMain.addWidget(tree)
 
         root = domDoc.documentElement()
         mapped = self.findValuesWithColors(root, '')
         for path, varNameAndElement in mapped.items():
-            topItem = QtWidgets.QTreeWidgetItem(tree, [path])
+            topItem = QTreeWidgetItem(tree, [path])
             topItem.setFirstColumnSpanned(True)
             for varName, element in varNameAndElement.items():
                 qColor = self.decimalToQColor(int(element.attribute('Value')))
                 hexColor = qColor.name()
+                if self.ColorIsTranslucent(qColor):
+                    hexColor = qColor.name(QColor.HexArgb)
                 childItem = TreeItemWithColorDomElement(
                     topItem,
                     [varName, element.attribute('Value'), "", hexColor],
                     element
                 )
-                childItem.setBackground(2, QtGui.QBrush(qColor))
-                childItem.setSizeHint(2, QtCore.QSize(20, 50))
+                childItem.setBackground(2, QBrush(qColor))
+                childItem.setSizeHint(2, QSize(20, 50))
 
-                # Set the Qt.ItemIsEditable flag for the desired column (index 1 in this case)
                 childItem.setFlags(
                     childItem.flags() |
-                    QtCore.Qt.ItemIsSelectable |
-                    QtCore.Qt.ItemIsEditable
+                    Qt.ItemIsSelectable |
+                    Qt.ItemIsEditable
                 )
 
         tree.itemPressed.connect(self.onPressedTreeColor)
@@ -201,10 +205,10 @@ class ColorFetcherDialog(QtWidgets.QDialog):
 
         return tree
 
-    def decimalToQColor(self, argb: str) -> QtGui.QColor:
+    def decimalToQColor(self, argb: str) -> QColor:
         rgbaHex = format(int(argb), '08x')
         r, g, b, a = rgbaHex[:2], rgbaHex[2:4], rgbaHex[4:6], rgbaHex[6:8]
-        return QtGui.QColor(int(r, 16), int(g, 16), int(b, 16), int(a, 16))
+        return QColor(int(r, 16), int(g, 16), int(b, 16), int(a, 16))
 
     def qColorToDecimal(self, color: QColor) -> int:
         red = color.red()
@@ -252,15 +256,22 @@ class ColorFetcherDialog(QtWidgets.QDialog):
     def onPressedTreeColor(self, it: TreeItemWithColorDomElement, col: int):
         isColorColumn = col == 2
         if isColorColumn:
-            colorDialog = QtWidgets.QColorDialog(it.backgroundColor(2))
+            modifiers = QApplication.keyboardModifiers()
+            ctrlAndShiftPressed = modifiers & Qt.ControlModifier and modifiers & Qt.ShiftModifier
+
+            color = it.backgroundColor(2)
+            colorDialog = QColorDialog(color)
+            showAlpha = self.ColorIsTranslucent(color) or ctrlAndShiftPressed
+
+            colorDialog.setOption(QColorDialog.ShowAlphaChannel, showAlpha)
 
             result = colorDialog.exec()
-            if result == QtWidgets.QDialog.Accepted \
-            and colorDialog.currentColor() != it.backgroundColor(2):
+            if result == QDialog.Accepted \
+            and colorDialog.currentColor() != color:
                 newColor = colorDialog.currentColor()
                 newColorDecimal = self.qColorToDecimal(newColor)
 
-                parent: QtWidgets.QTreeWidgetItem = it.parent()
+                parent: QTreeWidgetItem = it.parent()
                 paramPathMinusRoot = parent.text(0)[7:]  # strips off '//root/'
 
                 parameterGrp = ParamGet(f'User parameter:{paramPathMinusRoot}')
@@ -271,27 +282,6 @@ class ColorFetcherDialog(QtWidgets.QDialog):
                 it.setText(1, str(newColorDecimal))
 
                 self.aColorHasChanged = True
-
-    def updateDomDocValue(self, element: QDomElement):
-        lockFile = QtCore.QLockFile(self.userConfigFile.fileName())
-        waitTime = 160
-
-        if lockFile.tryLock(waitTime):
-            if self.userConfigFile.open(QtCore.QFile.WriteOnly | QtCore.QFile.Text):
-                out = QtCore.QTextStream(self.userConfigFile)
-                out << element.ownerDocument().toString()
-                self.userConfigFile.close()
-            else:
-                error_message = self.userConfigFile.errorString()
-                Console.PrintError(
-                    f'Failed to update user.cfg manually: {error_message}')
-        else:
-            Console.PrintError("{} was locked for more than {}ms. {}".format(
-                self.userConfigFile.fileName(),
-                waitTime,
-                'FreeCAD should still write to it when it\'s closed'
-            ))
-
 
 # Create and show the dialog
 dialog = ColorFetcherDialog()
