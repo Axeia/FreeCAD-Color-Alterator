@@ -4,13 +4,16 @@ user.cfg color alterations made easy.
 This macro presents you with a window with all the colors found in user.cfg and clicking on the color (in the color column) pops up a color dialog letting you select a different color. 
 It should work with any FreeCAD installation of v0.19 or higher, please report an issue if it doesn't.
 
-![The Color Alterator window](https://i.imgur.com/ptKn3qj.png)
+![The Color Alterator window](https://i.imgur.com/F9R1ByP.png)
 
 ## Installation
 Please see the FreeCAD wiki on how to install a macro
 https://wiki.freecad.org/How_to_install_macros
 
 ## Version notes
+**v3:**
+Added an option to set the background color of the preview tree allowing for better contrast
+
 **v2:**
 Added support for Alpha transparency if it's initially present (fixing [issue #2](https://github.com/Axeia/FreeCAD-Color-Alterator/issues/2)) or when ctrl+shift are held when clicking the color column.
 
