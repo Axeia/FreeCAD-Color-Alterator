@@ -1,8 +1,8 @@
 __Name__            = 'Color Alterator'
 __Comment__         = 'Parses the user config for colors and presents them in a grid'
 __Author__          = 'Axeia'
-__Version__         = '2' 
-__Date__            = '2023-08-27'
+__Version__         = '3' 
+__Date__            = '2023-09-25'
 __License__         = 'CC0-1.0'
 __Web__             = ''
 __Wiki__            = ''
@@ -14,9 +14,9 @@ __Communication__   = 'https://forum.freecad.org/memberlist.php?mode=viewprofile
 __Files__           = ''
 
 import os
-from PySide2.QtWidgets import QColorDialog, QTreeWidget, QTreeWidgetItem, QDialog, QHeaderView, QStyledItemDelegate, QApplication, QGridLayout
-from PySide2.QtGui import QCursor, QCloseEvent, QFont, QBrush, QColor
-from PySide2.QtCore import QDir, QFile, QTimer, QIODevice, QSize
+from PySide2.QtWidgets import QColorDialog, QTreeWidget, QTreeWidgetItem, QDialog, QHeaderView, QStyledItemDelegate, QApplication, QGridLayout, QPushButton, QMenu, QAction, QWidgetAction, QLabel, QWidget, QHBoxLayout
+from PySide2.QtGui import QCursor, QCloseEvent, QFont, QBrush, QColor, QPixmap, QIcon
+from PySide2.QtCore import QDir, QFile, QTimer, QIODevice, QSize, QSettings
 from PySide2.QtCore import Qt
 from FreeCAD import Console, ParamGet
 from PySide2.QtXml import QDomDocument, QDomNodeList, QDomElement
@@ -25,6 +25,7 @@ from typing import Dict
 import FreeCADGui
 import FreeCAD
 
+settings = QSettings('FreeCAD', 'ColorAlterator')
 
 class TreeItemWithColorDomElement(QTreeWidgetItem):
     def __init__(self, parent: QTreeWidget, sequence: [], domElement: QDomElement):
@@ -133,6 +134,7 @@ openAndAcceptPreferencesDialog.triggered = False
 class ColorFetcherDialog(QDialog):
     def __init__(self):
         super().__init__()
+        self.tree = None
 
         self.setWindowFlags(Qt.WindowCloseButtonHint)
         self.setWindowTitle(__Name__)
@@ -140,12 +142,16 @@ class ColorFetcherDialog(QDialog):
         self.setUpUi()
         self.aColorHasChanged = False
 
+        self.markTheRightTreeBgAction()
+
     def closeEvent(self, event: QCloseEvent):
         if self.aColorHasChanged:
             openAndAcceptPreferencesDialog()
 
     def setUpUi(self):
         self.gridLayoutMain = QGridLayout(self)
+
+        self.addTreeBackgroundColorButton()
 
         strFolder = FreeCAD.getUserAppDataDir()
         if hasattr(FreeCAD, 'getUserConfigDir'):            
@@ -166,15 +172,110 @@ class ColorFetcherDialog(QDialog):
         else:
             Console.PrintMessage("Failed to open user config file for reading")
 
-        tree = self.createTree(domDoc)
+        self.tree = self.createTree(domDoc)
 
+        self.gridLayoutMain.setColumnStretch(0, 1)
+        self.gridLayoutMain.setColumnStretch(1, 0)
+
+
+    def addTreeBackgroundColorButton(self):
+        self.treeBgColorButton = QPushButton('Set tree background color', self)
+        self.gridLayoutMain.addWidget(self.treeBgColorButton, 0, 1, 1, 1)
+
+        self.treeBackgroundColorMenu = QMenu('Tree background options', self.treeBgColorButton)
+        self.actionDefault = QAction('Default (from theme)', self.treeBackgroundColorMenu)
+        self.actionDefault.setCheckable(True)
+        self.actionDefault.triggered.connect(self.defaultTreeBgClicked)
+        self.treeBackgroundColorMenu.addAction(self.actionDefault)
+        self.actionCustom = QAction('Custom', self.treeBackgroundColorMenu)
+        self.actionCustom.setCheckable(True)
+        self.actionCustom.triggered.connect(self.customTreeBgClicked)
+        self.treeBackgroundColorMenu.addAction(self.actionCustom)
+        self.treeBackgroundColorMenu.setCursor(Qt.PointingHandCursor)
+        self.markTheRightTreeBgAction()
+
+        self.menuWidth = self.treeBackgroundColorMenu.sizeHint().width()
+
+        # Create a custom widget to hold the pixmap
+        pixmapWidget = QWidget(self.treeBackgroundColorMenu)
+        pixmapWidget.setFixedHeight(32)
+        pixmapWidget.setFixedWidth(self.menuWidth)
+
+        # Create a layout for the custom widget
+        pixmapLayout = QHBoxLayout(pixmapWidget)
+        pixmapLayout.setContentsMargins(0, 0, 0, 0)
+        pixmapLayout.setAlignment(Qt.AlignCenter)
+
+        # Create the pixmap and add it to the custom widget
+        self.pm = QPixmap(self.menuWidth, 32)  # Set the width of the pixmap to the width of the menu
+        self.pm.fill(QColor(settings.value('tree_background_color', '#FF00FF')))
+        self.pixmapLabel = QLabel(pixmapWidget)
+        self.pixmapLabel.setPixmap(self.pm)
+        pixmapLayout.addWidget(self.pixmapLabel)
+
+        # Create a QWidgetAction with the custom widget
+        pixmapAction = QWidgetAction(self.treeBackgroundColorMenu)
+        pixmapAction.setDefaultWidget(pixmapWidget)
+        pixmapAction.triggered.connect(self.setTreeBackgroundColor)
+
+        # Add the pixmap action to the menu
+        self.treeBackgroundColorMenu.addAction(pixmapAction)
+
+        self.treeBgColorButton.setMenu(self.treeBackgroundColorMenu)
+
+    def setTreeBackgroundColor(self):
+        color = settings.value('tree_background_color', '#FF00FF', str)
+        colorDialog = QColorDialog(color)
+
+        result = colorDialog.exec()
+        if result == QDialog.Accepted and colorDialog.currentColor() != color:
+            newColor = colorDialog.currentColor()
+            newColorHexStr = newColor.name()
+            settings.setValue('tree_background_color', newColorHexStr)
+
+            # Repaint the pixmap with the new color
+            self.pm.fill(newColor)
+            self.pixmapLabel.setPixmap(self.pm)
+            self.setTreeBackgroundStylesheet(newColorHexStr)
+
+
+    def setTreeBackgroundStylesheet(self, color: str):
+        if self.actionCustom.isChecked():
+            # Create a QColor object from the background color
+            bgColor = QColor(color)
+            # Calculate the brightness of the background color
+            brightness = bgColor.lightness()
+            # Choose black or white based on the brightness
+            textColor = '#000000' if brightness > 127 else '#FFFFFF'
+
+            self.tree.setStyleSheet(
+                f'QTreeWidget{{ background-color: {color}; color: {textColor}; }}')
+        else:
+            self.tree.setStyleSheet(f'')
+
+
+    def defaultTreeBgClicked(self):
+        settings.setValue('tree_use_default_background', self.actionDefault.isChecked())
+        self.markTheRightTreeBgAction()
+    
+    def customTreeBgClicked(self):
+        settings.setValue('tree_use_default_background', not self.actionCustom.isChecked())
+        self.markTheRightTreeBgAction()
+
+    def markTheRightTreeBgAction(self):
+        useDefault = settings.value('tree_use_default_background', True, bool)
+        self.actionDefault.setChecked(useDefault)
+        self.actionCustom.setChecked(not useDefault)
+        
+        if self.tree:
+            self.setTreeBackgroundStylesheet(settings.value('tree_background_color', '#FF00FF'))
 
     def ColorIsTranslucent(self, color: QColor):
         return color.alpha() < 255
 
     def createTree(self, domDoc: QDomDocument) -> QTreeWidget:
         tree = ColorConfigTree()
-        self.gridLayoutMain.addWidget(tree)
+        self.gridLayoutMain.addWidget(tree, 1, 0, 1, 2)
 
         root = domDoc.documentElement()
         mapped = self.findValuesWithColors(root, '')
